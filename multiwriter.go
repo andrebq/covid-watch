@@ -65,6 +65,7 @@ func (d *DirWriter) doSplit() error {
 		return err
 	}
 	d.curWriter, err = openNextFile(d.Basedir, basenameFn(d.NewBasename)(time.Now()), 0644)
+	d.curSz = 0
 	return d.err
 }
 

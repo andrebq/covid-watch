@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/andrebq/covid-watch/collect"
+	"github.com/andrebq/covid-watch/webapp"
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -34,6 +35,15 @@ func watchSignal(ctx context.Context, sig os.Signal) context.Context {
 	return ctx
 }
 
+func runServer(ctx context.Context, server func(context.Context) error, serverDescription string, cancelFn func(), done func()) {
+	defer done()
+	err := server(ctx)
+	if err != nil {
+		log.Error().Err(err).Str("server", serverDescription).Send()
+		cancelFn()
+	}
+}
+
 func main() {
 	flag.Parse()
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
@@ -41,13 +51,16 @@ func main() {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
 	ctx = watchSignal(ctx, os.Interrupt)
 	var wg sync.WaitGroup
-	go collect.Run(ctx, wg.Done)
+	wg.Add(2)
+	go runServer(ctx, collect.Run, "CollectTweets", cancel, wg.Done)
+	go runServer(ctx, webapp.StartServer, "WebServer", cancel, wg.Done)
 
 	select {
 	case <-ctx.Done():
 		log.Error().Msg("Early cancelation")
 	}
+	wg.Wait()
 }

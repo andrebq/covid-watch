@@ -3,12 +3,45 @@ package collect
 import (
 	"context"
 	"io"
+	"time"
 
 	"github.com/vmihailenco/msgpack/v4"
 
 	"github.com/dghubble/go-twitter/twitter"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 )
+
+var (
+	tweetsReceived = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "tweets_received",
+		Help: "How many tweets were received from Twitter",
+	})
+
+	bytesWritten = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "tweet_bytes_written",
+		Help: "How many bytes were written so far",
+	})
+
+	batchSize = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "tweet_batch_size",
+		Help:    "How many tweets were on a given batch",
+		Buckets: []float64{1, 10, 50, 500, 1000},
+	})
+
+	writeDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "tweet_write_duration_seconds",
+		Help:    "How log it took to write one batch to the disk",
+		Buckets: prometheus.ExponentialBuckets(0.0001, 10, 5),
+	})
+)
+
+func init() {
+	prometheus.MustRegister(bytesWritten)
+	prometheus.MustRegister(tweetsReceived)
+	prometheus.MustRegister(writeDuration)
+	prometheus.MustRegister(batchSize)
+}
 
 func streamItems(ctx context.Context, out chan<- *twitter.Tweet, cli *twitter.Client, terms []string, done func()) {
 	defer close(out)
@@ -25,6 +58,7 @@ func streamItems(ctx context.Context, out chan<- *twitter.Tweet, cli *twitter.Cl
 	}
 	mux := twitter.NewSwitchDemux()
 	mux.Tweet = func(t *twitter.Tweet) {
+		tweetsReceived.Add(1)
 		out <- t
 	}
 	mux.StreamLimit = func(l *twitter.StreamLimit) {
@@ -78,8 +112,7 @@ func buffered(ctx context.Context, output chan<- []*twitter.Tweet, maxBuf int, i
 
 func writeOutput(out *DirWriter, input <-chan []*twitter.Tweet, separator string, done func()) error {
 	defer done()
-	for batch := range input {
-		// too lazy here, let's just burn memory
+	writeBatch := func(batch []*twitter.Tweet) error {
 		for _, v := range batch {
 			data, err := msgpack.Marshal(v)
 			if err != nil {
@@ -89,16 +122,29 @@ func writeOutput(out *DirWriter, input <-chan []*twitter.Tweet, separator string
 			if len(data) == 0 {
 				continue
 			}
-			_, err = out.Write(data)
+			sz, err := out.Write(data)
 			if err != nil {
 				log.Error().Err(err).Msg("Error writing data to disk.")
 				return err
 			}
-			_, err = io.WriteString(out, separator)
+			bytesWritten.Add(float64(sz))
+			sz, err = io.WriteString(out, separator)
 			if err != nil {
 				log.Error().Err(err).Msg("Error writing data to disk.")
 				return err
 			}
+			bytesWritten.Add(float64(sz))
+		}
+		return nil
+	}
+	for batch := range input {
+		// too lazy here, let's just burn memory
+		batchSize.Observe(float64(len(batch)))
+		now := time.Now()
+		err := writeBatch(batch)
+		writeDuration.Observe(time.Since(now).Seconds())
+		if err != nil {
+			return err
 		}
 	}
 	return out.Close()

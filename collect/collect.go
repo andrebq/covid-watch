@@ -25,8 +25,7 @@ func getTerms() []string {
 	return strings.Split(os.Getenv("SEARCH_TERMS"), ";")
 }
 
-func Run(ctx context.Context, done func()) error {
-	defer done()
+func Run(ctx context.Context) error {
 	// TODO: rewrite to use errGroup
 	log.Info().Msg("Connecting to Twitter")
 	cli := openClient()

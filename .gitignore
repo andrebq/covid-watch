@@ -2,4 +2,5 @@
 *.exe
 vendor
 *.json
-*.json.txt
+*.msgpack
+*.msgpack.*

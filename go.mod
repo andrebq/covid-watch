@@ -7,5 +7,5 @@ require (
 	github.com/dghubble/oauth1 v0.6.0
 	github.com/joho/godotenv v1.3.0
 	github.com/rs/zerolog v1.18.0
-	github.com/valyala/gozstd v1.6.4
+	github.com/vmihailenco/msgpack/v4 v4.3.7
 )

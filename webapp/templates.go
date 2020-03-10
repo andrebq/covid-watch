@@ -23,6 +23,7 @@ func addTemplate(parent *template.Template, name, code string) {
 func initRootTemplate() {
 	t := template.New("root")
 	addTemplate(t, "landingPage", landingPageTemplate)
+	addTemplate(t, "showTagsPage", showTagsPageTemplate)
 	rootTemplate = t
 }
 

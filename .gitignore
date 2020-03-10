@@ -4,3 +4,4 @@ vendor
 *.json
 *.msgpack
 *.msgpack.*
+collections/

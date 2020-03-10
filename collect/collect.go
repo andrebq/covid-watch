@@ -55,7 +55,7 @@ func Run(ctx context.Context) error {
 	go streamItems(ctx, tweets, cli, terms, wg.Done)
 	go buffered(ctx, batch, 1000, tweets, wg.Done)
 	go func(errPtr *error) {
-		err := writeOutput(&dw, batch, "\n", wg.Done)
+		err := writeOutput(&dw, batch, wg.Done)
 		if err != nil {
 			log.Error().Err(err).Msg("Error writing output. Canceling all operations")
 			cancel()

@@ -2,7 +2,6 @@ package collect
 
 import (
 	"context"
-	"io"
 	"time"
 
 	"github.com/vmihailenco/msgpack/v4"
@@ -110,38 +109,25 @@ func buffered(ctx context.Context, output chan<- []*twitter.Tweet, maxBuf int, i
 	}
 }
 
-func writeOutput(out *DirWriter, input <-chan []*twitter.Tweet, separator string, done func()) error {
+func writeOutput(out *DirWriter, input <-chan []*twitter.Tweet, done func()) error {
 	defer done()
-	writeBatch := func(batch []*twitter.Tweet) error {
-		for _, v := range batch {
-			data, err := msgpack.Marshal(v)
-			if err != nil {
-				// too lazy to handle encoding errors here, skip
-				continue
-			}
-			if len(data) == 0 {
-				continue
-			}
-			sz, err := out.Write(data)
-			if err != nil {
-				log.Error().Err(err).Msg("Error writing data to disk.")
-				return err
-			}
-			bytesWritten.Add(float64(sz))
-			sz, err = io.WriteString(out, separator)
-			if err != nil {
-				log.Error().Err(err).Msg("Error writing data to disk.")
-				return err
-			}
-			bytesWritten.Add(float64(sz))
+	writeBatch := func(batch []*twitter.Tweet) (int, error) {
+		p, err := NewPacket("TweetBatch", TweetBatch{Items: batch}, msgpack.Marshal)
+		if err != nil {
+			return 0, err
 		}
-		return nil
+		sz, err := WritePacket(out, p, msgpack.Marshal)
+		if err != nil {
+			return sz, err
+		}
+		return sz, nil
+
 	}
 	for batch := range input {
 		// too lazy here, let's just burn memory
-		batchSize.Observe(float64(len(batch)))
 		now := time.Now()
-		err := writeBatch(batch)
+		sz, err := writeBatch(batch)
+		bytesWritten.Add(float64(sz))
 		writeDuration.Observe(time.Since(now).Seconds())
 		if err != nil {
 			return err
